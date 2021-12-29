@@ -1,0 +1,17 @@
+{
+  "name": "MyOwnWifiSetup",
+  "keywords": "esp32, automatic wifi setup",
+  "description": "My own ESP32 wifi setup library",
+  "authors":
+  {
+    "name": "Olivier Perron"
+  },
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/freeasabeer/MyOwnWifiSetup.git"
+  },
+  "version": "0.1.0",
+  "frameworks": "arduino",
+  "platforms": ["espressif32"]
+}
