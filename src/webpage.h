@@ -1,3 +1,34 @@
+#ifndef ENHANCED_PAGE
+static const char INDEX_HTML1[] PROGMEM =
+"<!DOCTYPE HTML>"
+"<html>"
+"<head>"
+"<meta content=\"text/html; charset=ISO-8859-1\""
+" http-equiv=\"content-type\">"
+"<meta name = \"viewport\" content = \"width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0\">"
+"<title>Wi-Fi Manager</title>"
+"<style>"
+"\"body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; text-align:center;}\""
+"</style>"
+"</head>"
+"<body>"
+"<h3>Enter your Wi-Fi credentials</h3>"
+"<form action=\"/\" method=\"post\">"
+"<p>";
+
+static const char INDEX_HTML2[] PROGMEM =
+"</p><p>"
+"<label>SSID:&nbsp;</label>"
+"<input maxlength=\"30\" name=\"SSID\"><br>"
+"<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input type=\"password\" maxlength=\"30\" name=\"Passphrase\"><br>"
+"<input type=\"submit\" value=\"Save\">"
+"</p>"
+"</form>"
+"</body>"
+"</html>";
+
+#else  //#ifndef ENHANCED_PAGE
+
 // Got a lof of inspiration from https://github.com/Hieromon/AutoConnect
 
 #define AUTOCONNECT_PAGETITLE_CONFIG      "My Own Wifi Manager"
@@ -20,16 +51,27 @@
 #define AUTOCONNECT_MENUCOLOR_BACKGROUND  "#263238"
 #define AUTOCONNECT_MENUCOLOR_TEXT        "#fffacd"
 #define AUTOCONNECT_MENUCOLOR_ACTIVE      "#37474f"
+#define AUTOCONNECT_RESPONSE_WAITTIME     "2000"
+#define AUTOCONNECT_URI_RESULT            "/result"
+#define AUTOCONNECT_URI_SUCCESS           "/success"
+#define AUTOCONNECT_URI_FAIL              "/fail"
+#define AUTOCONNECT_PAGETITLE_CONNECTING  "Connection tentative"
+#define AUTOCONNECT_STRING_DEPLOY(s) #s
 
-static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
 /**< Common html document header. */
+//static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
+static const char MOWM_ELM_HTML_HEAD[] PROGMEM = {
   "<!DOCTYPE html>"
   "<html>"
   "<head>"
   "<meta charset=\"UTF-8\" name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+};
+static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
     "<title>" AUTOCONNECT_PAGETITLE_CONFIG "</title>"
     "<style type=\"text/css\">"
+};
 /**< Basic CSS common to all pages */
+static const char MOWM_CSS_BASE[] PROGMEM = {
   "html{"
     "font-family:Helvetica,Arial,sans-serif;"
     "font-size:16px;"
@@ -103,7 +145,9 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
     "opacity:0;"
     "z-index:1001"
   "}"
+};
 /**< Image icon for inline expansion, the lock mark. */
+const char MOWM_CSS_ICON_LOCK[] PROGMEM = {
   ".img-lock{"
     "width:22px;"
     "height:22px;"
@@ -111,7 +155,9 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
     "float:right;"
     "background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAB1ElEQVRIibWVu0scURTGf3d2drBQFAWbbRQVCwuVLIZdi2gnWIiF/4GtKyuJGAJh8mgTcU0T8T8ICC6kiIVu44gvtFEQQWwsbExQJGHXmZtiZsOyzCN3Vz+4cDjfvec7j7l3QAF95onRZ54YKmdE1IbnS0c9mnAyAjkBxDy3LRHrjtRyu7OD52HntTAyvbw/HxP2hkCearrRb2WSCSuTTGi60S+QpzFhbwznDl/VVMHw0sF7hEjFbW2qkB38lfp8nNDipWcATil+uDM3cDWyeNRSijnfkHJnezb5Vkkgvbg3IOXD2e1ts93S+icnkZOAVaalZK3YQMa4L+pC6L1WduhYSeCf0PLBdxzOjZ93Lwvm6APAiLmlF1ubPiHotmaS41ExQjH0ZbfNM1NAFpgD0lVcICIrANqAVaAd+AFIYAy4BqaBG+Wsq5AH3vgk8xpYrzf4KLAZwhe8PYEIvQe4vc6H8Hnc2dQs0AFchvAXQGdEDF8s4A5TZS34BQqqQNaS1WMI3KD4WUbNoBJfce9CO7BSr4BfBe8A21vmUwh0VdjdTyHwscL+UK+AHxoD7FDoAX6/Cnpxn4ay/egCjcCL/w1chkqLakLQ/6ABhT57uAd+Vzv/Ara3iY6fK4WxAAAAAElFTkSuQmCC) no-repeat"
   "}"
+};
 /**< non-marked list for UL */
+static const char MOWM_CSS_UL[] PROGMEM = {
   ".noorder,.exp{"
     "padding:0;"
     "list-style:none;"
@@ -141,7 +187,9 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
   ".noorder input[type=\"text\"]:invalid{"
     "background:#fce4d6"
   "}"
+};
 /**< INPUT button and submit style */
+static const char MOWM_CSS_INPUT_BUTTON[] PROGMEM = {
   "input[type=\"button\"],input[type=\"submit\"],button[type=\"submit\"],button[type=\"button\"]{"
     "padding:8px 0.5em;"
     "font-weight:bold;"
@@ -176,7 +224,9 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
     "outline:none;"
     "text-decoration:none"
   "}"
+};
 /**< INPUT text style */
+static const char MOWM_CSS_INPUT_TEXT[] PROGMEM = {
   "input[type=\"text\"],input[type=\"password\"],input[type=\"number\"],.aux-page select{"
     "background-color:#fff;"
     "border:1px solid #ccc;"
@@ -220,7 +270,10 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
     "display:inline;"
     "padding:10px 0.5em;"
   "}"
+};
+/**< Common menu bar. This style quotes LuxBar. */
 /**< balzss/luxbar is licensed under the MIT License https://github.com/balzss/luxbar */
+const char MOWM_CSS_LUXBAR[] PROGMEM = {
   ".lb-fixed{"
     "width:100%;"
     "position:fixed;"
@@ -405,13 +458,17 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
   ".lb-menu-material .lb-burger span::after{"
     "background-color:" AUTOCONNECT_MENUCOLOR_TEXT
   "}"
+};
 /**< END OF balzss/luxbar is licensed under the MIT License https://github.com/balzss/luxbar */
 
+static const char  MOWM_PAGE_CONFIGNEW_2[] PROGMEM = {
     "</style>"
   "</head>"
   "<body style=\"padding-top:58px;\">"
     "<div class=\"container\">"
+};
 /**< LuxBar menu element. {{MENU_PRE}} */
+static const char  MOWM_ELM_MENU_PRE[] PROGMEM = {
   "<header id=\"lb\" class=\"lb-fixed\">"
     "<input type=\"checkbox\" class=\"lb-cb\" id=\"lb-cb\"/>"
     "<div class=\"lb-menu lb-menu-right lb-menu-material\">"
@@ -421,11 +478,15 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
           "<label class=\"lb-burger lb-burger-dblspin\" id=\"lb-burger\" for=\"lb-cb\"><span></span></label>"
         "</li>"
 //        "MENU_LIST"
+};
 /**< END OF LuxBar menu element. {{MENU_PRE}} */
 
-//      "{{MENU_AUX}}"
+//static const char  MOWM_ELM_MENU_AUX[] PROGMEM = {
+//        "{{AUX_MENU}}"
+//};
 
 /**< LuxBar menu element. {{MENU_POST}} */
+static const char  MOWM_ELM_MENU_POST[] PROGMEM = {
 //        "MENU_HOME"
 //        "MENU_DEVINFO"
       "</ul>"
@@ -434,15 +495,16 @@ static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
 //      "<div class=\"modal_button\"><h2><a href=\"" AUTOCONNECT_URI_RESET "\" class=\"modal_button\">" AUTOCONNECT_BUTTONLABEL_RESET "</a></h2></div>"
 //    "</div>"
   "</header>"
+};
 /**< END OF LuxBar menu element. {{MENU_POST}} */
-
+static const char  MOWM_PAGE_CONFIGNEW_3[] PROGMEM = {
       "<div class=\"base-panel\">"
         "<form action=\"" AUTOCONNECT_URI_CONNECT "\" method=\"post\">"
           "<button style=\"width:0;height:0;padding:0;border:0;margin:0\" aria-hidden=\"true\" tabindex=\"-1\" type=\"submit\" name=\"apply\" value=\"apply\"></button>"
 };
 // -->          "{{LIST_SSID}}"
 // -->          "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL "{{SSID_COUNT}} " AUTOCONNECT_PAGECONFIG_HIDDEN "{{HIDDEN_COUNT}}</div>"
-static const char  MOWM_PAGE_CONFIGNEW_2[] PROGMEM = {
+static const char  MOWM_PAGE_CONFIGNEW_4[] PROGMEM = {
           "<ul class=\"noorder\">"
             "<li>"
               "<label for=\"ssid\">" AUTOCONNECT_PAGECONFIG_SSID "</label>"
@@ -477,3 +539,48 @@ static const char  MOWM_PAGE_CONFIGNEW_2[] PROGMEM = {
   "</body>"
   "</html>"
 };
+
+
+
+/**< SVG animation for spinner */
+const char MOWM_CSS_SPINNER[] PROGMEM = {
+  ".spinner{"
+    "width:40px;"
+    "height:40px;"
+    "position:relative;"
+    "margin:100px auto"
+  "}"
+  ".dbl-bounce1, .dbl-bounce2{"
+    "width:100%;"
+    "height:100%;"
+    "border-radius:50%;"
+    "background-color:#a3cccc;"
+    "opacity:0.6;"
+    "position:absolute;"
+    "top:0;"
+    "left:0;"
+    "-webkit-animation:sk-bounce 2.0s infinite ease-in-out;"
+    "animation:sk-bounce 2.0s infinite ease-in-out"
+  "}"
+  ".dbl-bounce2{"
+    "-webkit-animation-delay:-1.0s;"
+    "animation-delay:-1.0s"
+  "}"
+  "@-webkit-keyframes sk-bounce{"
+    "0%, 100%{-webkit-transform:scale(0.0)}"
+    "50%{-webkit-transform:scale(1.0)}"
+  "}"
+  "@keyframes sk-bounce{"
+    "0%,100%{"
+      "transform:scale(0.0);"
+      "-webkit-transform:scale(0.0);"
+    "}50%{"
+      "transform:scale(1.0);"
+      "-webkit-transform:scale(1.0);"
+    "}"
+  "}"
+};
+
+
+
+#endif //#ifndef ENHANCED_PAGE

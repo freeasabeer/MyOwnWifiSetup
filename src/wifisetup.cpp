@@ -5,41 +5,17 @@
 
 #define ENHANCED_PAGE
 
-#ifdef ENHANCED_PAGE
 #include "webpage.h"
-#else
-static const char INDEX_HTML1[] PROGMEM =
-"<!DOCTYPE HTML>"
-"<html>"
-"<head>"
-"<meta content=\"text/html; charset=ISO-8859-1\""
-" http-equiv=\"content-type\">"
-"<meta name = \"viewport\" content = \"width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0\">"
-"<title>Wi-Fi Manager</title>"
-"<style>"
-"\"body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; text-align:center;}\""
-"</style>"
-"</head>"
-"<body>"
-"<h3>Enter your Wi-Fi credentials</h3>"
-"<form action=\"/\" method=\"post\">"
-"<p>";
-
-static const char INDEX_HTML2[] PROGMEM =
-"</p><p>"
-"<label>SSID:&nbsp;</label>"
-"<input maxlength=\"30\" name=\"SSID\"><br>"
-"<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input type=\"password\" maxlength=\"30\" name=\"Passphrase\"><br>"
-"<input type=\"submit\" value=\"Save\">"
-"</p>"
-"</form>"
-"</body>"
-"</html>";
-#endif
+typedef enum {CONFIG_PAGE, CONNECTING_PAGE, SUCCESS_PAGE, FAILURE_PAGE} Page_t;
+typedef enum {RESULT_SUCCESS, RESULT_FAILED, RESULT_NONE} Result_t;
+void buildPage(Page_t page);
 
 static WebServer *server;
 static bool Done;
 static String *pagetoserve;
+static Result_t Result;
+static String selectedSSID;
+static const  String  _emptyString = String("");
 /*
  * Function to handle unknown URLs
  */
@@ -52,13 +28,19 @@ bool isIp(String str) {
   }
   return true;
 }
+void waitForEndTransmission(void) {
+  while (server->client().connected()) {
+    delay(1);
+    yield();
+  }
+}
 
 bool wifisetup_captivePortal() {
   String  hostHeader = server->hostHeader();
   if (!isIp(hostHeader) && (hostHeader != WiFi.localIP().toString()) && (!hostHeader.endsWith(F(".local")))) {
-    Serial.print("Request redirected to captive portal");
-    server->sendHeader("Location", String("http://") + server->client().localIP().toString() + String("/"), true);
-    server->send ( 302, "text/plain", ""); // Empty content inhibits Content-length header so we have to close the socket ourselves.
+    Serial.print(F("Request redirected to captive portal"));
+    server->sendHeader(String(F("Location")), String(F("http://")) + server->client().localIP().toString() + String(F("/")), true);
+    server->send ( 302, String(F("text/plain")), _emptyString); // Empty content inhibits Content-length header so we have to close the socket ourselves.
     server->client().stop(); // Stop is needed because we sent no content length
     return true;
   }
@@ -70,99 +52,112 @@ void wifisetup_handleNotFound() {
   if (wifisetup_captivePortal()) { // If captive portal redirect instead of displaying the error page.
     return;
   }
-  String message = "File Not Found\n\n";
-  message += "URI: ";
+  String message = String(F("File Not Found\n\n"));
+  message += String(F("URI: "));
   message += server->uri();
-  message += "\nMethod: ";
-  message += (server->method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
+  message += String(F("\nMethod: "));
+  message += (server->method() == HTTP_GET) ? String(F("GET")) : String(F("POST"));
+  message += String(F("\nArguments: "));
   message += server->args();
-  message += "\n";
+  message += String(F("\n"));
   for (uint8_t i = 0; i < server->args(); i++) {
-    message += " " + server->argName(i) + ": " + server->arg(i) + "\n";
+    message += String(F(" ")) + server->argName(i) + String(F(": ")) + server->arg(i) + String(F("\n"));
   }
-  server->send(404, "text/plain", message);
-  Serial.printf(message.c_str());
+  server->send(404, String(F("text/plain")), message);
+  Serial.print(message);
+}
+void wifisetup_handleResult() {
+  String redirect = String(F("http://"));
+  redirect += server->client().localIP().toString();
+  switch(Result) {
+    case RESULT_NONE:
+      redirect += String(F(AUTOCONNECT_URI_RESULT));
+      break;
+    case RESULT_FAILED:
+      redirect += String(F(AUTOCONNECT_URI_FAIL));
+    break;
+    case RESULT_SUCCESS:
+      redirect += String(F(AUTOCONNECT_URI_SUCCESS));
+    break;
+  }
+  // Redirect to result page
+  server->sendHeader(String(F("Location")), redirect, true);
+  server->send(302, String(F("text/plain")), _emptyString);
+  server->client().stop();
+  waitForEndTransmission();  // Wait for response transmission complete
+}
+
+void wifisetup_handleSuccess() {
+  buildPage(SUCCESS_PAGE);
+  server->send(200, String(F("text/html")), *pagetoserve);
+  waitForEndTransmission();  // Wait for response transmission complete
+  Done = true;
+}
+
+void wifisetup_handleFail() {
+  buildPage(FAILURE_PAGE);
+  server->send(200, String(F("text/html")), *pagetoserve);
 }
 
 /*
  * Function for handling form
  */
 void wifisetup_handleSubmit() {
-  String response_success=
-  "<h1>Success</h1>"
-  "<h2>Device will switch to configured network in 3 seconds</h2>";
-
-  String response_error=
-  "<h1>Error</h1>"
-  "<h2><a href='/'>Go back</a>and try again";
-
   int i = 20;
-  WiFi.begin(server->arg("SSID").c_str(), (const char *)server->arg("Passphrase").c_str());
+  Serial.println(String(F("Trying to connect to "))+server->arg(F("SSID")));
+  WiFi.begin(server->arg(F("SSID")).c_str(), (const char *)server->arg(F("Passphrase")).c_str());
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
     delay(500);
     i--;
   }
 
+#ifdef ENHANCED_PAGE
   if (WiFi.status() == WL_CONNECTED) {
-      server->send(200, "text/html", response_success);
-      delay(3000);
-      //ESP.restart();
-      Done = true;
+    Result = RESULT_SUCCESS;
+    //Serial.println(F("Success"));
   } else {
-      server->send(200, "text/html", response_error);
+    Result = RESULT_FAILED;
+    //Serial.println(F("Failed"));
   }
+#else
+  if (WiFi.status() == WL_CONNECTED) {
+    buildPage(SUCCESS_PAGE);
+    server->send(200, String(F("text/html")), *pagetoserve);
+    //delay(3000);
+    //ESP.restart();
+    Done = true;
+  } else {
+    buildPage(FAILURE_PAGE);
+    server->send(200, String(F("text/html")), *pagetoserve);
+  }
+#endif
 }
 
 /*
  * Function for home page
  */
-void buildPage() {
-#ifndef ENHANCED_PAGE
-  *pagetoserve = INDEX_HTML1;
-  // Scanning available Wi-Fi networks
-  int n = WiFi.scanNetworks();
-  for (int i = 0; i < n; ++i) {
-    *pagetoserve += "SSID: "+WiFi.SSID(i)+", RSSI: "+String(WiFi.RSSI(i))+", Channel: "+String(WiFi.channel(i));
-    *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":" *";
-    *pagetoserve += "<br />";
-  }
-  *pagetoserve += INDEX_HTML2;
-#else
-  *pagetoserve = MOWM_PAGE_CONFIGNEW_1;
-  // Scanning available Wi-Fi networks
-  int hidden = 0;
-  int n = WiFi.scanNetworks();
-  for (int i = 0; i < n; ++i) {
-    String ssid = WiFi.SSID(i);
-    *pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
-    *pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
-    *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
-    *pagetoserve +="<br>";
-    if (ssid.length() == 0)
-      hidden++;
-  }
-  *pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
-  *pagetoserve += MOWM_PAGE_CONFIGNEW_2;
-#endif
-}
 void wifisetup_handleRoot() {
-  if (server->hasArg("SSID") && server->hasArg("Passphrase")) {
+  if (server->hasArg(F("SSID")) && server->hasArg(F("Passphrase"))) {
+    selectedSSID = server->arg(F("SSID"));
+#ifdef ENHANCED_PAGE
+    buildPage(CONNECTING_PAGE);
+    server->send(200, String(F("text/html")), *pagetoserve);
+#endif
     wifisetup_handleSubmit();
   }
   else {
-    server->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    server->sendHeader("Pragma", "no-cache");
-    server->sendHeader("Expires", "-1");
-    buildPage();
-    server->send(200, "text/html", *pagetoserve);
+    server->sendHeader(String(F("Cache-Control")), String(F("no-cache, no-store, must-revalidate")));
+    server->sendHeader(String(F("Pragma")), String(F("no-cache")));
+    server->sendHeader(String(F("Expires")), String(F("-1")));
+    buildPage(CONFIG_PAGE);
+    server->send(200, String(F("text/html")), *pagetoserve);
   }
 }
 
 void captivePortalWatchdog_cb(TimerHandle_t xTimer) {
   // if we are stuck in the captive portal, just reboot
   if (!Done) {
-    Serial.println("Captive portal wachdog: rebooting...");
+    Serial.println(F("Captive portal watchdog: rebooting..."));
     ESP.restart();
   }
 }
@@ -179,28 +174,34 @@ void startWiFiManager(void) {
   pagetoserve = &webpage;
 
   Done = false;
+  Result = RESULT_NONE;
+  selectedSSID = "<none>";
+
   WiFi.persistent(true);
 
   // Setup access point
   const char* ssid     = "ESP32 WiFi Manager";
   const char* password = NULL; // Open Network
   //const char* password = "12345678";
-  Serial.println("Setting Access Point...");
+  Serial.println(F("Setting Access Point..."));
   WiFi.softAP(ssid, password);
   IPAddress apIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
+  Serial.print(F("AP IP address: "));
   Serial.println(apIP);
 
   // Setup the DNS server redirecting all the domains to the apIP
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer.start(53, "*", apIP);
+  dnsServer.start(53, F("*"), apIP);
 
   // Setup web pages
-  server->on("/", wifisetup_handleRoot);
+  server->on(F("/"), wifisetup_handleRoot);
+  server->on(F("/result"), wifisetup_handleResult);
+  server->on(F("/success"), wifisetup_handleSuccess);
+  server->on(F("/fail"), wifisetup_handleFail);
   server->onNotFound(wifisetup_handleNotFound);
   server->begin();
 
-  Serial.println("WiFi Manager server started");
+  Serial.println(F("WiFi Manager server started"));
   captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
   xTimerStart(captivePortalWatchdogTimer, 0);
 
@@ -216,5 +217,138 @@ void startWiFiManager(void) {
   dnsServer.stop();
   //delete &dnsServer;
   //delete pagetoserve;
-  WiFi.softAPdisconnect();
+  WiFi.softAPdisconnect(true);
+  WiFi.enableAP(false);
+}
+
+
+
+void buildPage(Page_t page) {
+#ifndef ENHANCED_PAGE
+  switch (page) {
+    case CONFIG_PAGE:
+      *pagetoserve = INDEX_HTML1;
+      // Scanning available Wi-Fi networks
+      int n = WiFi.scanNetworks();
+      for (int i = 0; i < n; ++i) {
+        *pagetoserve += String(F("SSID: "))+WiFi.SSID(i)+String(F(", RSSI: "))+String(WiFi.RSSI(i))+String(F(", Channel: "))+String(WiFi.channel(i));
+        *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?String(F(" ")):String(F(" *"));
+        *pagetoserve += String(F("<br />"));
+      }
+      *pagetoserve += INDEX_HTML2;
+      break;
+
+    case CONNECTING_PAGE:
+      *pagetoserve =
+      "<h1>Connection attempt</h1>"
+      "<h2>Device is trying to connect to the network...</h2>";
+      break;
+
+    case SUCCESS_PAGE:
+      *pagetoserve =
+      "<h1>Success</h1>"
+      "<h2>Device is now connected to " + selectedSSID + "</h2>";
+      break;
+
+    case FAILURE_PAGE:
+      *pagetoserve =
+      "<h1>Error</h1>"
+      "<h2>Decice could not connect to "+ selectedSSID + "<br /><a href='/'>Go back</a> and try again</h2>";
+      break;
+  }
+#else
+  switch (page) {
+    case CONFIG_PAGE: {
+/*
+      *pagetoserve = MOWM_PAGE_CONFIGNEW_1;
+      // Scanning available Wi-Fi networks
+      int hidden = 0;
+      int n = WiFi.scanNetworks();
+      for (int i = 0; i < n; ++i) {
+        String ssid = WiFi.SSID(i);
+        *pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
+        *pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
+        *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
+        *pagetoserve +="<br>";
+        if (ssid.length() == 0)
+          hidden++;
+      }
+      *pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
+      *pagetoserve += MOWM_PAGE_CONFIGNEW_2;
+*/
+      *pagetoserve =  MOWM_ELM_HTML_HEAD;
+      *pagetoserve += MOWM_PAGE_CONFIGNEW_1;
+      *pagetoserve += MOWM_CSS_BASE;
+      *pagetoserve += MOWM_CSS_ICON_LOCK;
+      *pagetoserve += MOWM_CSS_UL;
+      *pagetoserve += MOWM_CSS_INPUT_BUTTON;
+      *pagetoserve += MOWM_CSS_INPUT_TEXT;
+      *pagetoserve += MOWM_CSS_LUXBAR;
+      *pagetoserve += MOWM_PAGE_CONFIGNEW_2;
+      *pagetoserve += MOWM_ELM_MENU_PRE;
+      *pagetoserve += MOWM_ELM_MENU_POST;
+      *pagetoserve += MOWM_PAGE_CONFIGNEW_3;
+      // Scanning available Wi-Fi networks
+      int hidden = 0;
+      int n = WiFi.scanNetworks();
+      for (int i = 0; i < n; ++i) {
+        String ssid = WiFi.SSID(i);
+        *pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
+        *pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
+        *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
+        *pagetoserve +="<br>";
+        if (ssid.length() == 0)
+          hidden++;
+      }
+      *pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
+      *pagetoserve += MOWM_PAGE_CONFIGNEW_4;
+      }
+      break;
+
+    case CONNECTING_PAGE:
+      *pagetoserve =  " ";// {{REQ}};
+      *pagetoserve += MOWM_ELM_HTML_HEAD;
+      *pagetoserve +=
+      "<title>" AUTOCONNECT_PAGETITLE_CONNECTING "</title>"
+      "<style type=\"text/css\">";
+      *pagetoserve += MOWM_CSS_BASE;
+      *pagetoserve += MOWM_CSS_SPINNER;
+      *pagetoserve += MOWM_CSS_LUXBAR;
+      *pagetoserve +=
+      "</style>"
+      "</head>"
+      "<body style=\"padding-top:58px;\">"
+      "<div class=\"container\">";
+      *pagetoserve += MOWM_ELM_MENU_PRE;
+      *pagetoserve += MOWM_ELM_MENU_POST;
+      *pagetoserve +=
+        "<div class=\"spinner\">"
+          "<div class=\"dbl-bounce1\"></div>"
+          "<div class=\"dbl-bounce2\"></div>"
+          "<div style=\"position:absolute;left:-100%;right:-100%;text-align:center;margin:10px auto;font-weight:bold;color:#0b0b33;\">" + selectedSSID +"</div>"
+        "</div>"
+      "</div>"
+      "<script type=\"text/javascript\">"
+        "setTimeout(\"link()\"," AUTOCONNECT_RESPONSE_WAITTIME ");"
+        "function link(){location.href='" AUTOCONNECT_URI_RESULT "';}"
+      "</script>"
+      "</body>"
+      "</html>";
+      break;
+
+    case SUCCESS_PAGE:
+      *pagetoserve =
+      "<h1>Success</h1>"
+      "<h2>Device is now connected to " + selectedSSID + "</h2>";
+      break;
+
+    case FAILURE_PAGE:
+      *pagetoserve =
+      "<h1>Error</h1>"
+      "<h2>Decice could not connect to "+ selectedSSID + "<br /><a href='/'>Go back</a> and try again</h2>";
+      break;
+  }
+
+#endif
+
 }
