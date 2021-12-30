@@ -3,7 +3,12 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 
-static const char INDEX_HTML1[] =
+#define ENHANCED_PAGE
+
+#ifdef ENHANCED_PAGE
+#include "webpage.h"
+#else
+static const char INDEX_HTML1[] PROGMEM =
 "<!DOCTYPE HTML>"
 "<html>"
 "<head>"
@@ -20,21 +25,21 @@ static const char INDEX_HTML1[] =
 "<form action=\"/\" method=\"post\">"
 "<p>";
 
-static const char INDEX_HTML2[] =
+static const char INDEX_HTML2[] PROGMEM =
 "</p><p>"
 "<label>SSID:&nbsp;</label>"
-"<input maxlength=\"30\" name=\"ssid\"><br>"
-"<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input type=\"password\" maxlength=\"30\" name=\"password\"><br>"
+"<input maxlength=\"30\" name=\"SSID\"><br>"
+"<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input type=\"password\" maxlength=\"30\" name=\"Passphrase\"><br>"
 "<input type=\"submit\" value=\"Save\">"
 "</p>"
 "</form>"
 "</body>"
 "</html>";
+#endif
 
 static WebServer *server;
-static bool Done = false;
-static String availableNetworks = "";
-
+static bool Done;
+static String *pagetoserve;
 /*
  * Function to handle unknown URLs
  */
@@ -61,6 +66,7 @@ bool wifisetup_captivePortal() {
 }
 
 void wifisetup_handleNotFound() {
+  Serial.printf("handleNotFound: %s\n", server->uri().c_str());
   if (wifisetup_captivePortal()) { // If captive portal redirect instead of displaying the error page.
     return;
   }
@@ -92,7 +98,7 @@ void wifisetup_handleSubmit() {
   "<h2><a href='/'>Go back</a>and try again";
 
   int i = 20;
-  WiFi.begin(server->arg("ssid").c_str(), (const char *)server->arg("password").c_str());
+  WiFi.begin(server->arg("SSID").c_str(), (const char *)server->arg("Passphrase").c_str());
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
     delay(500);
     i--;
@@ -111,37 +117,69 @@ void wifisetup_handleSubmit() {
 /*
  * Function for home page
  */
+void buildPage() {
+#ifndef ENHANCED_PAGE
+  *pagetoserve = INDEX_HTML1;
+  // Scanning available Wi-Fi networks
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; ++i) {
+    *pagetoserve += "SSID: "+WiFi.SSID(i)+", RSSI: "+String(WiFi.RSSI(i))+", Channel: "+String(WiFi.channel(i));
+    *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":" *";
+    *pagetoserve += "<br />";
+  }
+  *pagetoserve += INDEX_HTML2;
+#else
+  *pagetoserve = MOWM_PAGE_CONFIGNEW_1;
+  // Scanning available Wi-Fi networks
+  int hidden = 0;
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; ++i) {
+    String ssid = WiFi.SSID(i);
+    *pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
+    *pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
+    *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
+    *pagetoserve +="<br>";
+    if (ssid.length() == 0)
+      hidden++;
+  }
+  *pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
+  *pagetoserve += MOWM_PAGE_CONFIGNEW_2;
+#endif
+}
 void wifisetup_handleRoot() {
-  if (server->hasArg("ssid") && server->hasArg("password")) {
+  if (server->hasArg("SSID") && server->hasArg("Passphrase")) {
     wifisetup_handleSubmit();
   }
   else {
     server->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server->sendHeader("Pragma", "no-cache");
     server->sendHeader("Expires", "-1");
-    server->send(200, "text/html", INDEX_HTML1 + availableNetworks + INDEX_HTML2);
+    buildPage();
+    server->send(200, "text/html", *pagetoserve);
+  }
+}
+
+void captivePortalWatchdog_cb(TimerHandle_t xTimer) {
+  // if we are stuck in the captive portal, just reboot
+  if (!Done) {
+    Serial.println("Captive portal wachdog: rebooting...");
+    ESP.restart();
   }
 }
 
 /*
- * Function for loading form
- * Returns: false if no WiFi creds in EEPROM
+ * Function for loading captive portal form
  */
 void startWiFiManager(void) {
+  TimerHandle_t captivePortalWatchdogTimer;
   DNSServer dnsServer;
   WebServer webserver;
   server = &webserver;
+  String webpage;
+  pagetoserve = &webpage;
 
+  Done = false;
   WiFi.persistent(true);
-
-  // Scanning available Wi-Fi networks
-  int n = WiFi.scanNetworks();
-  for (int i = 0; i < n; ++i) {
-    availableNetworks += "SSID: "+WiFi.SSID(i)+", RSSI: "+String(WiFi.RSSI(i))+", Channel: "+String(WiFi.channel(i));
-    availableNetworks += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":" *";
-    availableNetworks += "<br />";
-  }
-  Serial.println(availableNetworks);
 
   // Setup access point
   const char* ssid     = "ESP32 WiFi Manager";
@@ -163,6 +201,8 @@ void startWiFiManager(void) {
   server->begin();
 
   Serial.println("WiFi Manager server started");
+  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
+  xTimerStart(captivePortalWatchdogTimer, 0);
 
   while(!Done){
     dnsServer.processNextRequest();
@@ -170,9 +210,11 @@ void startWiFiManager(void) {
     delay(100);
   }
   // Job done, stopping everything
+  xTimerStop(captivePortalWatchdogTimer, 0);
   server->stop();
-  delete server;
+  //delete server;
   dnsServer.stop();
-  delete &dnsServer;
+  //delete &dnsServer;
+  //delete pagetoserve;
   WiFi.softAPdisconnect();
 }
