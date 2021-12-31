@@ -1,4 +1,4 @@
 #ifndef _WIFISETUP_H
 #define _WIFISETUP_H
-void startWiFiManager(void);
+void MOWM_begin(bool doReboot, unsigned int msec_try);
 #endif

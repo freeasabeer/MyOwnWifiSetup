@@ -4,7 +4,7 @@
 #include "esp_wifi.h"
 #include <wifisetup.h>
 
-
+// This server object is not at all required for MyOwnWiFiManager to work
 WebServer server(80);
 
 static const char *sEnable = "enable";
@@ -58,16 +58,11 @@ void setup()
         });
     server.onNotFound(handleNotFound);
 
-    // Try to connect for 10 seconds, if not successfull, switch to Wifi Manager captive portal
+    // Try to connect for 10 seconds
+    // if not successfull, switch to Wifi Manager captive portal
+    // and do not reboot once connected as a client
     Serial.printf("Connecting to Wi-Fi...\n");
-    WiFi.begin();
-    int i = 10;
-    while((WiFi.status() != WL_CONNECTED) && (i>0)) {
-        delay(1000);
-        i--;
-    }
-    if (WiFi.status() != WL_CONNECTED)
-        startWiFiManager();
+    MOWM_begin(false, (unsigned int)10000); // Use MOWM_begin instead of WiFi.begin
 
     // If we reached that point, then we got connected to an access point as a client !
 

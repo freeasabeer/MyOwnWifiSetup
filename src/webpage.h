@@ -51,12 +51,22 @@ static const char INDEX_HTML2[] PROGMEM =
 #define AUTOCONNECT_MENUCOLOR_BACKGROUND  "#263238"
 #define AUTOCONNECT_MENUCOLOR_TEXT        "#fffacd"
 #define AUTOCONNECT_MENUCOLOR_ACTIVE      "#37474f"
-#define AUTOCONNECT_RESPONSE_WAITTIME     "2000"
-#define AUTOCONNECT_URI_RESULT            "/result"
-#define AUTOCONNECT_URI_SUCCESS           "/success"
-#define AUTOCONNECT_URI_FAIL              "/fail"
+#define AUTOCONNECT_RESPONSE_WAITTIME     RESPONSE_WAITTIME
+#define AUTOCONNECT_URI_RESULT            URI_RESULT
+#define AUTOCONNECT_URI_SUCCESS           URI_SUCCESS
+#define AUTOCONNECT_URI_FAIL              URI_FAIL
 #define AUTOCONNECT_PAGETITLE_CONNECTING  "Connection tentative"
 #define AUTOCONNECT_STRING_DEPLOY(s) #s
+#define AUTOCONNECT_PAGESTATS_ESTABLISHEDCONNECTION "Established connection"
+#define AUTOCONNECT_PAGESTATS_MODE        "Mode"
+#define AUTOCONNECT_PAGESTATS_IP          "IP"
+#define AUTOCONNECT_PAGESTATS_GATEWAY     "GW"
+#define AUTOCONNECT_PAGESTATS_SUBNETMASK  "Subnet mask"
+#define AUTOCONNECT_PAGESTATS_CHANNEL     "Channel"
+#define AUTOCONNECT_PAGESTATS_DBM         "dBm"
+#define AUTOCONNECT_PAGETITLE_STATISTICS "Statistics"
+#define AUTOCONNECT_PAGETITLE_CONNECTIONFAILED "Connection failed"
+#define AUTOCONNECT_PAGECONNECTIONFAILED_CONNECTIONFAILED "Connection Failed"
 
 /**< Common html document header. */
 //static const char  MOWM_PAGE_CONFIGNEW_1[] PROGMEM = {
@@ -581,6 +591,59 @@ const char MOWM_CSS_SPINNER[] PROGMEM = {
   "}"
 };
 
+/**< TABLE style */
+static const char MOWM_CSS_TABLE[] PROGMEM = {
+  "table{"
+    "border-collapse:collapse;"
+    "border-spacing:0;"
+    "border:1px solid #ddd;"
+    "color:#444;"
+    "background-color:#fff;"
+    "margin-bottom:20px"
+  "}"
+  "table.info,"
+  "table.info>tfoot,"
+  "table.info>thead{"
+    "width:100%;"
+    "border-color:#5C9DED"
+  "}"
+  "table.info>thead{"
+    "background-color:#5C9DED"
+  "}"
+  "table.info>thead>tr>th{"
+    "color:#fff"
+  "}"
+  "td,"
+  "th{"
+    "padding:10px 22px"
+  "}"
+  "thead{"
+    "background-color:#f3f3f3;"
+    "border-bottom:1px solid #ddd"
+  "}"
+  "thead>tr>th{"
+    "font-weight:400;"
+    "text-align:left"
+  "}"
+  "tfoot{"
+    "border-top:1px solid #ddd"
+  "}"
+  "tbody,"
+  "tbody>tr:nth-child(odd){"
+    "background-color:#fff"
+  "}"
+  "tbody>tr>td,"
+  "tfoot>tr>td{"
+    "font-weight:300;"
+    "font-size:.88em"
+  "}"
+  "tbody>tr:nth-child(even){"
+    "background-color:#f7f7f7"
+  "}"
+    "table.info tbody>tr:nth-child(even){"
+    "background-color:#EFF5FD"
+  "}"
+};
 
 
 #endif //#ifndef ENHANCED_PAGE
