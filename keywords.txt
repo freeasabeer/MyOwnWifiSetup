@@ -7,7 +7,7 @@
 # Methods and Functions (KEYWORD2)
 #######################################
 
-MOWM_begin	KEYWORD2
+begin	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)

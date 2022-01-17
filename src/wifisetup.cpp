@@ -2,6 +2,7 @@
 #include <String.h>
 #include <WiFi.h>
 #include <DNSServer.h>
+#include "wifisetup.h"
 
 #define URI_RESULT "/result"
 #define URI_SUCCESS "/success"
@@ -18,20 +19,23 @@
 #endif
 
 #include "webpage.h"
-typedef enum {CONFIG_PAGE, CONNECTING_PAGE, SUCCESS_PAGE, FAILURE_PAGE} Page_t;
-typedef enum {RESULT_SUCCESS, RESULT_FAILED, RESULT_NONE} Result_t;
-static void buildPage(Page_t page);
 
-static WebServer *server;
-static bool Done;
-static String *pagetoserve;
-static Result_t Result;
-static String selectedSSID;
-static const  String  _emptyString = String("");
+static MOWM *instance;
+static void outsideTimerHandler(TimerHandle_t xTimer) { // define global handler
+  instance->captivePortalWatchdog_cb(xTimer); // calls class member handler
+}
+
+MOWM::MOWM()/*:WebServer()*/ {
+  instance = this;
+  this->Done = false;
+  this->Result = RESULT_NONE;
+  this->selectedSSID = "<none>";
+}
+
 /*
  * Function to handle unknown URLs
  */
-static bool isIp(String str) {
+bool MOWM::isIp(String str) {
   for (int i = 0; i < str.length(); i++) {
     int c = str.charAt(i);
     if (c != '.' && (c < '0' || c > '9')) {
@@ -40,13 +44,13 @@ static bool isIp(String str) {
   }
   return true;
 }
-static void waitForEndTransmission(void) {
-  while (server->client().connected()) {
+void MOWM::waitForEndTransmission(void) {
+  while (this->server->client().connected()) {
     delay(1);
     yield();
   }
 }
-static String decodeWiFiStatus(wl_status_t wl_status) {
+String MOWM::decodeWiFiStatus(wl_status_t wl_status) {
   const char *statusTable [] PROGMEM = {
     PSTR("IDLE"),
     PSTR("NO_SSID_AVAIL"),
@@ -87,7 +91,7 @@ static String decodeWiFiStatus(wl_status_t wl_status) {
   return String(status);
 }
 
-static String get_WIFI_MODE(void) {
+String MOWM::get_WIFI_MODE(void) {
   String wifiMode;
 
   switch (WiFi.getMode()) {
@@ -114,41 +118,41 @@ static String get_WIFI_MODE(void) {
   return wifiMode;
 }
 
-static bool wifisetup_captivePortal() {
-  String  hostHeader = server->hostHeader();
+bool MOWM::captivePortal() {
+  String  hostHeader = this->server->hostHeader();
   if (!isIp(hostHeader) && (hostHeader != WiFi.localIP().toString()) && (!hostHeader.endsWith(F(".local")))) {
     Serial.print(F("Request redirected to captive portal"));
-    server->sendHeader(String(F("Location")), String(F("http://")) + server->client().localIP().toString() + String(F("/")), true);
-    server->send ( 302, String(F("text/plain")), _emptyString); // Empty content inhibits Content-length header so we have to close the socket ourselves.
-    server->client().stop(); // Stop is needed because we sent no content length
+    this->server->sendHeader(String(F("Location")), String(F("http://")) + this->server->client().localIP().toString() + String(F("/")), true);
+    this->server->send( 302, String(F("text/plain")), this->_emptyString); // Empty content inhibits Content-length header so we have to close the socket ourselves.
+    this->server->client().stop(); // Stop is needed because we sent no content length
     return true;
   }
   return false;
 }
 
-static void wifisetup_handleNotFound() {
-  Serial.printf("handleNotFound: %s\n", server->uri().c_str());
-  if (wifisetup_captivePortal()) { // If captive portal redirect instead of displaying the error page.
+void MOWM::handleNotFound() {
+  Serial.printf("handleNotFound: %s\n", this->server->uri().c_str());
+  if (captivePortal()) { // If captive portal redirect instead of displaying the error page.
     return;
   }
   String message = String(F("File Not Found\n\n"));
   message += String(F("URI: "));
-  message += server->uri();
+  message += this->server->uri();
   message += String(F("\nMethod: "));
-  message += (server->method() == HTTP_GET) ? String(F("GET")) : String(F("POST"));
+  message += (this->server->method() == HTTP_GET) ? String(F("GET")) : String(F("POST"));
   message += String(F("\nArguments: "));
-  message += server->args();
+  message += this->server->args();
   message += String(F("\n"));
-  for (uint8_t i = 0; i < server->args(); i++) {
-    message += String(F(" ")) + server->argName(i) + String(F(": ")) + server->arg(i) + String(F("\n"));
+  for (uint8_t i = 0; i < this->server->args(); i++) {
+    message += String(F(" ")) + this->server->argName(i) + String(F(": ")) + this->server->arg(i) + String(F("\n"));
   }
-  server->send(404, String(F("text/plain")), message);
+  this->server->send(404, String(F("text/plain")), message);
   Serial.print(message);
 }
-static void wifisetup_handleResult() {
+void MOWM::handleResult() {
   String redirect = String(F("http://"));
-  redirect += server->client().localIP().toString();
-  switch(Result) {
+  redirect += this->server->client().localIP().toString();
+  switch(this->Result) {
     case RESULT_NONE:
       redirect += String(F(URI_RESULT));
       break;
@@ -160,41 +164,41 @@ static void wifisetup_handleResult() {
     break;
   }
   // Redirect to result page
-  server->sendHeader(String(F("Location")), redirect, true);
-  server->send(302, String(F("text/plain")), _emptyString);
-  server->client().stop();
+  this->server->sendHeader(String(F("Location")), redirect, true);
+  this->server->send(302, String(F("text/plain")), this->_emptyString);
+  this->server->client().stop();
   waitForEndTransmission();  // Wait for response transmission complete
 }
 
-static void wifisetup_handleSuccess() {
+void MOWM::handleSuccess() {
   buildPage(SUCCESS_PAGE);
-  server->send(200, String(F("text/html")), *pagetoserve);
+  this->server->send(200, String(F("text/html")), *this->pagetoserve);
   waitForEndTransmission();  // Wait for response transmission complete
-  Done = true;
+  this->Done = true;
 }
 
-static void wifisetup_handleFail() {
+void MOWM::handleFail() {
   buildPage(FAILURE_PAGE);
-  server->send(200, String(F("text/html")), *pagetoserve);
+  this->server->send(200, String(F("text/html")), *this->pagetoserve);
 }
 
 /*
  * Function for handling form
  */
-static void wifisetup_handleSubmit() {
+void MOWM::handleSubmit() {
   int i = 20;
-  Serial.println(String(F("Trying to connect to "))+server->arg(F("SSID")));
-  WiFi.begin(server->arg(F("SSID")).c_str(), (const char *)server->arg(F("Passphrase")).c_str());
+  Serial.println(String(F("Trying to connect to "))+this->server->arg(F("SSID")));
+  WiFi.begin(this->server->arg(F("SSID")).c_str(), (const char *)this->server->arg(F("Passphrase")).c_str());
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
     delay(500);
     i--;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Result = RESULT_SUCCESS;
+    this->Result = RESULT_SUCCESS;
     //Serial.println(F("Success"));
   } else {
-    Result = RESULT_FAILED;
+    this->Result = RESULT_FAILED;
     //Serial.println(F("Failed"));
   }
 }
@@ -202,25 +206,25 @@ static void wifisetup_handleSubmit() {
 /*
  * Function for home page
  */
-static void wifisetup_handleRoot() {
-  if (server->hasArg(F("SSID")) && server->hasArg(F("Passphrase"))) {
-    selectedSSID = server->arg(F("SSID"));
+void MOWM::handleRoot() {
+  if (this->server->hasArg(F("SSID")) && this->server->hasArg(F("Passphrase"))) {
+    this->selectedSSID = this->server->arg(F("SSID"));
     buildPage(CONNECTING_PAGE);
-    server->send(200, String(F("text/html")), *pagetoserve);
-    wifisetup_handleSubmit();
+    this->server->send(200, String(F("text/html")), *this->pagetoserve);
+    handleSubmit();
   }
   else {
-    server->sendHeader(String(F("Cache-Control")), String(F("no-cache, no-store, must-revalidate")));
-    server->sendHeader(String(F("Pragma")), String(F("no-cache")));
-    server->sendHeader(String(F("Expires")), String(F("-1")));
+    this->server->sendHeader(String(F("Cache-Control")), String(F("no-cache, no-store, must-revalidate")));
+    this->server->sendHeader(String(F("Pragma")), String(F("no-cache")));
+    this->server->sendHeader(String(F("Expires")), String(F("-1")));
     buildPage(CONFIG_PAGE);
-    server->send(200, String(F("text/html")), *pagetoserve);
+    this->server->send(200, String(F("text/html")), *this->pagetoserve);
   }
 }
 
-static void captivePortalWatchdog_cb(TimerHandle_t xTimer) {
+void MOWM::captivePortalWatchdog_cb(TimerHandle_t xTimer) {
   // if we are stuck in the captive portal, just reboot
-  if (!Done) {
+  if (!this->Done) {
     Serial.println(F("Captive portal watchdog: rebooting..."));
     ESP.restart();
   }
@@ -229,17 +233,14 @@ static void captivePortalWatchdog_cb(TimerHandle_t xTimer) {
 /*
  * Function for loading captive portal form
  */
-static void startWiFiManager(bool doReboot) {
+void MOWM::startWiFiManager(bool doReboot) {
   TimerHandle_t captivePortalWatchdogTimer;
   DNSServer dnsServer;
   WebServer webserver;
-  server = &webserver;
+  this->server = &webserver;
   String webpage;
-  pagetoserve = &webpage;
+  this->pagetoserve = &webpage;
 
-  Done = false;
-  Result = RESULT_NONE;
-  selectedSSID = "<none>";
 
   WiFi.persistent(true);
 
@@ -258,29 +259,31 @@ static void startWiFiManager(bool doReboot) {
   dnsServer.start(53, F("*"), apIP);
 
   // Setup web pages
-  server->on(F("/"), wifisetup_handleRoot);
-  server->on(F(URI_RESULT), wifisetup_handleResult);
-  server->on(F(URI_SUCCESS), wifisetup_handleSuccess);
-  server->on(F(URI_FAIL), wifisetup_handleFail);
-  server->onNotFound(wifisetup_handleNotFound);
-  server->begin();
+  this->server->on(F("/"), std::bind(&MOWM::handleRoot, this));
+  this->server->on(F(URI_RESULT), std::bind(&MOWM::handleResult, this));
+  this->server->on(F(URI_SUCCESS), std::bind(&MOWM::handleSuccess, this));
+  this->server->on(F(URI_FAIL), std::bind(&MOWM::handleFail, this));
+  this->server->onNotFound(std::bind(&MOWM::handleNotFound, this));
+  this->server->begin();
 
   Serial.println(F("WiFi Manager server started"));
-  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
+  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
+  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(std::bind(&MOWM::captivePortalWatchdog_cb, this)));
+  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(outsideTimerHandler));
   xTimerStart(captivePortalWatchdogTimer, 0);
 
-  while(!Done){
+  while(!this->Done){
     dnsServer.processNextRequest();
-    server->handleClient();
+    this->server->handleClient();
     delay(100);
   }
   // Job done, stopping everything
   xTimerStop(captivePortalWatchdogTimer, 0);
-  server->stop();
+  this->server->stop();
   //delete server;
   dnsServer.stop();
   //delete &dnsServer;
-  //delete pagetoserve;
+  //delete this->pagetoserve;
   WiFi.softAPdisconnect(true);
   WiFi.enableAP(false);
 
@@ -288,9 +291,9 @@ static void startWiFiManager(bool doReboot) {
     ESP.restart();
 }
 
-void MOWM_begin(bool doReboot, unsigned int msec_try) {
+void MOWM::begin(bool doReboot, unsigned long msec_try) {
   WiFi.begin();
-  int i = msec_try/500;
+  unsigned long i = msec_try/500;
   while((WiFi.status() != WL_CONNECTED) && (i>0)) {
     delay(500);
     i--;
@@ -300,24 +303,24 @@ void MOWM_begin(bool doReboot, unsigned int msec_try) {
 }
 
 
-static void buildPage(Page_t page) {
+void MOWM::buildPage(Page_t page) {
 #ifndef ENHANCED_PAGE
   switch (page) {
     case CONFIG_PAGE: {
-      *pagetoserve = INDEX_HTML1;
+      *this->pagetoserve = INDEX_HTML1;
       // Scanning available Wi-Fi networks
       int n = WiFi.scanNetworks();
       for (int i = 0; i < n; ++i) {
-        *pagetoserve += String(F("SSID: "))+WiFi.SSID(i)+String(F(", RSSI: "))+String(WiFi.RSSI(i))+String(F(", Channel: "))+String(WiFi.channel(i));
-        *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?String(F(" ")):String(F(" *"));
-        *pagetoserve += String(F("<br />"));
+        *this->pagetoserve += String(F("SSID: "))+WiFi.SSID(i)+String(F(", RSSI: "))+String(WiFi.RSSI(i))+String(F(", Channel: "))+String(WiFi.channel(i));
+        *this->pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?String(F(" ")):String(F(" *"));
+        *this->pagetoserve += String(F("<br />"));
       }
-      *pagetoserve += INDEX_HTML2;
+      *this->pagetoserve += INDEX_HTML2;
       }
       break;
 
     case CONNECTING_PAGE:
-      *pagetoserve =
+      *this->pagetoserve =
       "<!DOCTYPE html>"
       "<html>"
       "<head>"
@@ -336,7 +339,7 @@ static void buildPage(Page_t page) {
       break;
 
     case SUCCESS_PAGE:
-      *pagetoserve =
+      *this->pagetoserve =
       "<!DOCTYPE html>"
       "<html>"
       "<head>"
@@ -345,13 +348,13 @@ static void buildPage(Page_t page) {
       "</head>"
       "<body>"
       "<h1>Success</h1>"
-      "<h2>Device is now connected to " + selectedSSID + "</h2>"
+      "<h2>Device is now connected to " + this->selectedSSID + "</h2>"
       "</body>"
       "</html>";
       break;
 
     case FAILURE_PAGE:
-      *pagetoserve =
+      *this->pagetoserve =
       "<!DOCTYPE html>"
       "<html>"
       "<head>"
@@ -360,7 +363,7 @@ static void buildPage(Page_t page) {
       "</head>"
       "<body>"
       "<h1>Error</h1>"
-      "<h2>Decice could not connect to "+ selectedSSID + "<br /><a href='/'>Go back</a> and try again</h2>"
+      "<h2>Decice could not connect to "+ this->selectedSSID + "<br /><a href='/'>Go back</a> and try again</h2>"
       "</body>"
       "</html>";
       break;
@@ -368,56 +371,56 @@ static void buildPage(Page_t page) {
 #else
   switch (page) {
     case CONFIG_PAGE: {
-      *pagetoserve =  MOWM_ELM_HTML_HEAD;
-      *pagetoserve += MOWM_PAGE_CONFIGNEW_1;
-      *pagetoserve += MOWM_CSS_BASE;
-      *pagetoserve += MOWM_CSS_ICON_LOCK;
-      *pagetoserve += MOWM_CSS_UL;
-      *pagetoserve += MOWM_CSS_INPUT_BUTTON;
-      *pagetoserve += MOWM_CSS_INPUT_TEXT;
-      *pagetoserve += MOWM_CSS_LUXBAR;
-      *pagetoserve += MOWM_PAGE_CONFIGNEW_2;
-      *pagetoserve += MOWM_ELM_MENU_PRE;
-      *pagetoserve += MOWM_ELM_MENU_POST;
-      *pagetoserve += MOWM_PAGE_CONFIGNEW_3;
+      *this->pagetoserve =  MOWM_ELM_HTML_HEAD;
+      *this->pagetoserve += MOWM_PAGE_CONFIGNEW_1;
+      *this->pagetoserve += MOWM_CSS_BASE;
+      *this->pagetoserve += MOWM_CSS_ICON_LOCK;
+      *this->pagetoserve += MOWM_CSS_UL;
+      *this->pagetoserve += MOWM_CSS_INPUT_BUTTON;
+      *this->pagetoserve += MOWM_CSS_INPUT_TEXT;
+      *this->pagetoserve += MOWM_CSS_LUXBAR;
+      *this->pagetoserve += MOWM_PAGE_CONFIGNEW_2;
+      *this->pagetoserve += MOWM_ELM_MENU_PRE;
+      *this->pagetoserve += MOWM_ELM_MENU_POST;
+      *this->pagetoserve += MOWM_PAGE_CONFIGNEW_3;
       // Scanning available Wi-Fi networks
       int hidden = 0;
       int n = WiFi.scanNetworks();
       for (int i = 0; i < n; ++i) {
         String ssid = WiFi.SSID(i);
-        *pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
-        *pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
-        *pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
-        *pagetoserve +="<br>";
+        *this->pagetoserve += "<input type=\"button\" onClick=\"onFocus(this.getAttribute('value'))\" value=\"" + ssid + "\">";
+        *this->pagetoserve += "<label class=\"slist\">" + String(WiFi.RSSI(i)) + "&#037;&ensp;Ch." + String(WiFi.channel(i)) + "</label>";
+        *this->pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"<span class=\"img-lock\"></span>";
+        *this->pagetoserve +="<br>";
         if (ssid.length() == 0)
           hidden++;
       }
-      *pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
-      *pagetoserve += MOWM_PAGE_CONFIGNEW_4;
+      *this->pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
+      *this->pagetoserve += MOWM_PAGE_CONFIGNEW_4;
       }
       break;
 
     case CONNECTING_PAGE:
-      *pagetoserve =  " ";// {{REQ}};
-      *pagetoserve += MOWM_ELM_HTML_HEAD;
-      *pagetoserve +=
+      *this->pagetoserve =  " ";// {{REQ}};
+      *this->pagetoserve += MOWM_ELM_HTML_HEAD;
+      *this->pagetoserve +=
       "<title>" AUTOCONNECT_PAGETITLE_CONNECTING "</title>"
       "<style type=\"text/css\">";
-      *pagetoserve += MOWM_CSS_BASE;
-      *pagetoserve += MOWM_CSS_SPINNER;
-      *pagetoserve += MOWM_CSS_LUXBAR;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_CSS_BASE;
+      *this->pagetoserve += MOWM_CSS_SPINNER;
+      *this->pagetoserve += MOWM_CSS_LUXBAR;
+      *this->pagetoserve +=
       "</style>"
       "</head>"
       "<body style=\"padding-top:58px;\">"
       "<div class=\"container\">";
-      *pagetoserve += MOWM_ELM_MENU_PRE;
-      *pagetoserve += MOWM_ELM_MENU_POST;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_ELM_MENU_PRE;
+      *this->pagetoserve += MOWM_ELM_MENU_POST;
+      *this->pagetoserve +=
         "<div class=\"spinner\">"
           "<div class=\"dbl-bounce1\"></div>"
           "<div class=\"dbl-bounce2\"></div>"
-          "<div style=\"position:absolute;left:-100%;right:-100%;text-align:center;margin:10px auto;font-weight:bold;color:#0b0b33;\">" + selectedSSID +"</div>"
+          "<div style=\"position:absolute;left:-100%;right:-100%;text-align:center;margin:10px auto;font-weight:bold;color:#0b0b33;\">" + this->selectedSSID +"</div>"
         "</div>"
       "</div>"
       "<script type=\"text/javascript\">"
@@ -429,21 +432,21 @@ static void buildPage(Page_t page) {
       break;
 
     case SUCCESS_PAGE:
-      *pagetoserve =  MOWM_ELM_HTML_HEAD;
-      *pagetoserve +=
+      *this->pagetoserve =  MOWM_ELM_HTML_HEAD;
+      *this->pagetoserve +=
         "<title>" AUTOCONNECT_PAGETITLE_STATISTICS "</title>"
         "<style type=\"text/css\">";
-      *pagetoserve += MOWM_CSS_BASE;
-      *pagetoserve += MOWM_CSS_TABLE;
-      *pagetoserve += MOWM_CSS_LUXBAR;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_CSS_BASE;
+      *this->pagetoserve += MOWM_CSS_TABLE;
+      *this->pagetoserve += MOWM_CSS_LUXBAR;
+      *this->pagetoserve +=
         "</style>"
       "</head>"
       "<body style=\"padding-top:58px;\">"
       "<div class=\"container\">";
-      *pagetoserve += MOWM_ELM_MENU_PRE;
-      *pagetoserve += MOWM_ELM_MENU_POST;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_ELM_MENU_PRE;
+      *this->pagetoserve += MOWM_ELM_MENU_POST;
+      *this->pagetoserve +=
         "<div>"
         "<table class=\"info\" style=\"border:none;\">"
           "<tbody>"
@@ -483,21 +486,21 @@ static void buildPage(Page_t page) {
       break;
 
     case FAILURE_PAGE:
-      *pagetoserve =  MOWM_ELM_HTML_HEAD;
-      *pagetoserve +=
+      *this->pagetoserve =  MOWM_ELM_HTML_HEAD;
+      *this->pagetoserve +=
   "<title>" AUTOCONNECT_PAGETITLE_CONNECTIONFAILED "</title>"
     "<style type=\"text/css\">";
-      *pagetoserve += MOWM_CSS_BASE;
-      *pagetoserve += MOWM_CSS_TABLE;
-      *pagetoserve += MOWM_CSS_LUXBAR;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_CSS_BASE;
+      *this->pagetoserve += MOWM_CSS_TABLE;
+      *this->pagetoserve += MOWM_CSS_LUXBAR;
+      *this->pagetoserve +=
     "</style>"
   "</head>"
   "<body style=\"padding-top:58px;\">"
     "<div class=\"container\">";
-      *pagetoserve += MOWM_ELM_MENU_PRE;
-      *pagetoserve += MOWM_ELM_MENU_POST;
-      *pagetoserve +=
+      *this->pagetoserve += MOWM_ELM_MENU_PRE;
+      *this->pagetoserve += MOWM_ELM_MENU_POST;
+      *this->pagetoserve +=
       "<div>"
         "<table class=\"info\" style=\"border:none;\">"
           "<tbody>"
