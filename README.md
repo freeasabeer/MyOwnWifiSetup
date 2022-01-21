@@ -34,5 +34,5 @@ Restart the Arduino IDE and verify that the library appears in the File->Example
 Update the `lib_deps` section of your `platformio.ini` file as following:
 ```
 lib_deps =
-  MyOwnOTA=https://github.com/freeasabeer/MyOwnWifiSetup
+  MyOwnWifiSetup=https://github.com/freeasabeer/MyOwnWifiSetup
 ```
