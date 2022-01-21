@@ -7,7 +7,7 @@ As of now **My Own WiFi Manager** do only support the ESP32 and not the ESP8662 
 You can even reduce the **My Own WiFi Manager** footprint if you compile it with `BASIC_PAGE` defined: as a result captive portal pages will be ugly but the footprint will be mininal ;)
 
 This can be achieved by adding:
-````
+```
 build_flags =
   -DBASIC_PAGE
 ```
