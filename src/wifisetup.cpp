@@ -20,13 +20,7 @@
 
 #include "webpage.h"
 
-static MOWM *instance;
-static void outsideTimerHandler(TimerHandle_t xTimer) { // define global handler
-  instance->captivePortalWatchdog_cb(xTimer); // calls class member handler
-}
-
-MOWM::MOWM()/*:WebServer()*/ {
-  instance = this;
+MOWM::MOWM() {
   this->Done = false;
   this->Result = RESULT_NONE;
   this->selectedSSID = "<none>";
@@ -222,6 +216,12 @@ void MOWM::handleRoot() {
   }
 }
 
+static void static_captivePortalWatchdog_cb(TimerHandle_t xTimer) {
+  MOWM *me;
+  me = static_cast<MOWM*>(pvTimerGetTimerID(xTimer));
+  me->captivePortalWatchdog_cb(xTimer);
+}
+
 void MOWM::captivePortalWatchdog_cb(TimerHandle_t xTimer) {
   // if we are stuck in the captive portal, just reboot
   if (!this->Done) {
@@ -267,9 +267,7 @@ void MOWM::startWiFiManager(bool doReboot) {
   this->server->begin();
 
   Serial.println(F("WiFi Manager server started"));
-  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
-  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(std::bind(&MOWM::captivePortalWatchdog_cb, this)));
-  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(outsideTimerHandler));
+  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, this, reinterpret_cast<TimerCallbackFunction_t>(static_captivePortalWatchdog_cb));
   xTimerStart(captivePortalWatchdogTimer, 0);
 
   while(!this->Done){
@@ -348,7 +346,7 @@ void MOWM::buildPage(Page_t page) {
       "</head>"
       "<body>"
       "<h1>Success</h1>"
-      "<h2>Device is now connected to " + this->selectedSSID + "</h2>"
+      "<h2>Device is now connected to " + this->selectedSSID + " ("+WiFi.localIP().toString()+")</h2>"
       "</body>"
       "</html>";
       break;
