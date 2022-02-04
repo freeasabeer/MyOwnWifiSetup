@@ -8,7 +8,7 @@ class MOWM /*: public WebServer*/
 {
   public:
     MOWM();
-    void begin(bool doReboot, unsigned long msec_try = 10000);
+    void begin(bool doReboot, unsigned long msec_try = 10000, bool force_activation = false);
     void captivePortalWatchdog_cb(TimerHandle_t xTimer);
 
 
@@ -36,5 +36,6 @@ class MOWM /*: public WebServer*/
     Result_t Result;
     String selectedSSID;
     const  String  _emptyString = String("");
+    String mqtt_ip;
 };
 #endif

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include "wifisetup.h"
+#include <Preferences.h>
 
 #define URI_RESULT "/result"
 #define URI_SUCCESS "/success"
@@ -20,13 +21,7 @@
 
 #include "webpage.h"
 
-static MOWM *instance;
-static void outsideTimerHandler(TimerHandle_t xTimer) { // define global handler
-  instance->captivePortalWatchdog_cb(xTimer); // calls class member handler
-}
-
-MOWM::MOWM()/*:WebServer()*/ {
-  instance = this;
+MOWM::MOWM() {
   this->Done = false;
   this->Result = RESULT_NONE;
   this->selectedSSID = "<none>";
@@ -187,6 +182,12 @@ void MOWM::handleFail() {
  */
 void MOWM::handleSubmit() {
   int i = 20;
+  this->mqtt_ip = this->server->arg(F("MQTT"));
+  Preferences pref;
+  pref.begin("mows", false);
+  pref.putString("mqtt", this->mqtt_ip);
+  pref.end();
+
   Serial.println(String(F("Trying to connect to "))+this->server->arg(F("SSID")));
   WiFi.begin(this->server->arg(F("SSID")).c_str(), (const char *)this->server->arg(F("Passphrase")).c_str());
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
@@ -220,6 +221,12 @@ void MOWM::handleRoot() {
     buildPage(CONFIG_PAGE);
     this->server->send(200, String(F("text/html")), *this->pagetoserve);
   }
+}
+
+static void static_captivePortalWatchdog_cb(TimerHandle_t xTimer) {
+  MOWM *me;
+  me = static_cast<MOWM*>(pvTimerGetTimerID(xTimer));
+  me->captivePortalWatchdog_cb(xTimer);
 }
 
 void MOWM::captivePortalWatchdog_cb(TimerHandle_t xTimer) {
@@ -267,9 +274,7 @@ void MOWM::startWiFiManager(bool doReboot) {
   this->server->begin();
 
   Serial.println(F("WiFi Manager server started"));
-  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(captivePortalWatchdog_cb));
-  //captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(std::bind(&MOWM::captivePortalWatchdog_cb, this)));
-  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, (void*)0, reinterpret_cast<TimerCallbackFunction_t>(outsideTimerHandler));
+  captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, this, reinterpret_cast<TimerCallbackFunction_t>(static_captivePortalWatchdog_cb));
   xTimerStart(captivePortalWatchdogTimer, 0);
 
   while(!this->Done){
@@ -291,15 +296,19 @@ void MOWM::startWiFiManager(bool doReboot) {
     ESP.restart();
 }
 
-void MOWM::begin(bool doReboot, unsigned long msec_try) {
+void MOWM::begin(bool doReboot, unsigned long msec_try, bool force_activation) {
   WiFi.begin();
   unsigned long i = msec_try/500;
   while((WiFi.status() != WL_CONNECTED) && (i>0)) {
     delay(500);
     i--;
   }
+  if (force_activation) {
+    startWiFiManager(doReboot);
+  } else {
   if (WiFi.status() != WL_CONNECTED)
     startWiFiManager(doReboot);
+  }
 }
 
 
@@ -315,7 +324,22 @@ void MOWM::buildPage(Page_t page) {
         *this->pagetoserve += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?String(F(" ")):String(F(" *"));
         *this->pagetoserve += String(F("<br />"));
       }
-      *this->pagetoserve += INDEX_HTML2;
+      //*this->pagetoserve += INDEX_HTML2;
+      *this->pagetoserve += "</p><p>";
+      *this->pagetoserve += "<label>SSID:&nbsp;</label>";
+      *this->pagetoserve += "<input maxlength=\"30\" name=\"SSID\"><br>";
+      *this->pagetoserve += "<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input type=\"password\" maxlength=\"30\" name=\"Passphrase\"><br>";
+      Preferences pref;
+      pref.begin("mows", true);
+      String mqtt_ip = pref.getString("mqtt", F("192.168.100.24"));
+      pref.end();
+      *this->pagetoserve += "<label>MQTT:&nbsp;</label>";
+      *this->pagetoserve += "<input maxlength=\"16\" name=\"MQTT\" value=\""+mqtt_ip+"\"><br>";
+      *this->pagetoserve += "<input type=\"submit\" value=\"Save\">";
+      *this->pagetoserve += "</p>";
+      *this->pagetoserve += "</form>";
+      *this->pagetoserve += "</body>";
+      *this->pagetoserve += "</html>";
       }
       break;
 
@@ -348,7 +372,8 @@ void MOWM::buildPage(Page_t page) {
       "</head>"
       "<body>"
       "<h1>Success</h1>"
-      "<h2>Device is now connected to " + this->selectedSSID + "</h2>"
+      "<h2>Device is now connected to " + this->selectedSSID + " ("+WiFi.localIP().toString()+")</h2>"
+      "<h2>MQTT server set to " + this->mqtt_ip + "</h2>"
       "</body>"
       "</html>";
       break;
@@ -396,7 +421,39 @@ void MOWM::buildPage(Page_t page) {
           hidden++;
       }
       *this->pagetoserve += "<div style=\"margin:16px 0 8px 0;border-bottom:solid 1px #263238;\">" AUTOCONNECT_PAGECONFIG_TOTAL  + String(n) + " " + AUTOCONNECT_PAGECONFIG_HIDDEN + String(hidden) + "</div>";
-      *this->pagetoserve += MOWM_PAGE_CONFIGNEW_4;
+      //*this->pagetoserve += MOWM_PAGE_CONFIGNEW_4;
+      *this->pagetoserve += "<ul class=\"noorder\">";
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"ssid\">" AUTOCONNECT_PAGECONFIG_SSID "</label>";
+      *this->pagetoserve +=     "<input id=\"ssid\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_SSID "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_SSID "\">";
+      *this->pagetoserve +=   "</li>";
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"passphrase\">" AUTOCONNECT_PAGECONFIG_PASSPHRASE "</label>";
+      *this->pagetoserve +=     "<input id=\"passphrase\" type=\"password\" name=\"" AUTOCONNECT_PARAMID_PASS "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_PASSPHRASE "\">";
+      *this->pagetoserve +=   "</li>";
+      /* champ pour MQTT */
+      Preferences pref;
+      pref.begin("mows", true);
+      String mqtt_ip = pref.getString("mqtt", "192.168.100.24");
+      pref.end();
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"mqtt\">" AUTOCONNECT_PAGECONFIG_MQTT "</label>";
+      String default_mqtt_ip = "192.168.100.24";
+      *this->pagetoserve +=     "<input id=\"mqtt\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT "\" value=\"" + mqtt_ip + "\">";
+      *this->pagetoserve +=   "</li>";
+
+       *this->pagetoserve +=   "<li><input type=\"submit\" name=\"apply\" value=\"" AUTOCONNECT_PAGECONFIG_APPLY "\"></li>";
+      *this->pagetoserve +=  "</ul>";
+      *this->pagetoserve +=  "</form>";
+      *this->pagetoserve +=  "</div>";
+      *this->pagetoserve +=  "</div>";
+      *this->pagetoserve +=  "<script type=\"text/javascript\">";
+      *this->pagetoserve +=     "function onFocus(e){";
+      *this->pagetoserve +=       "document.getElementById('ssid').value=e,document.getElementById('passphrase').focus()";
+      *this->pagetoserve +=     "}";
+      *this->pagetoserve +=   "</script>";
+      *this->pagetoserve +=   "</body>";
+      *this->pagetoserve +=   "</html>";
       }
       break;
 
@@ -476,6 +533,10 @@ void MOWM::buildPage(Page_t page) {
           "<tr>"
             "<td>" AUTOCONNECT_PAGESTATS_DBM "</td>"
             "<td>" + WiFi.RSSI() + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> MQTT server </td>"
+            "<td>" + this->mqtt_ip + "</td>"
           "</tr>"
           "</tbody>"
         "</table>"
