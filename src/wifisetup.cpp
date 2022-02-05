@@ -182,12 +182,13 @@ void MOWM::handleFail() {
  */
 void MOWM::handleSubmit() {
   int i = 20;
-  this->mqtt_ip = this->server->arg(F("MQTT"));
-  Preferences pref;
-  pref.begin("mows", false);
-  pref.putString("mqtt", this->mqtt_ip);
-  pref.end();
-
+  if (this->mqtt_ip != this->server->arg(F("MQTT"))) {
+    this->mqtt_ip = this->server->arg(F("MQTT"));
+    Preferences pref;
+    pref.begin("mows", false);
+    pref.putString("mqtt", this->mqtt_ip);
+    pref.end();
+  }
   Serial.println(String(F("Trying to connect to "))+this->server->arg(F("SSID")));
   WiFi.begin(this->server->arg(F("SSID")).c_str(), (const char *)this->server->arg(F("Passphrase")).c_str());
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
