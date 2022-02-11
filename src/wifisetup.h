@@ -37,5 +37,6 @@ class MOWM /*: public WebServer*/
     String selectedSSID;
     const  String  _emptyString = String("");
     String mqtt_ip;
+    void (*cb)(const char* param);
 };
 #endif

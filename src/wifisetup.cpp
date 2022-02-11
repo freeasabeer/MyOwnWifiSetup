@@ -25,6 +25,14 @@ MOWM::MOWM() {
   this->Done = false;
   this->Result = RESULT_NONE;
   this->selectedSSID = "<none>";
+  this->cb = nullptr;
+}
+
+MOWM::MOWM(void (*cb)(const char* param)) {
+  this->Done = false;
+  this->Result = RESULT_NONE;
+  this->selectedSSID = "<none>";
+  this->cb = cb;
 }
 
 /*
@@ -277,6 +285,8 @@ void MOWM::startWiFiManager(bool doReboot) {
   Serial.println(F("WiFi Manager server started"));
   captivePortalWatchdogTimer = xTimerCreate("captivePortalWatchdog", pdMS_TO_TICKS(5*60e3), pdFALSE, this, reinterpret_cast<TimerCallbackFunction_t>(static_captivePortalWatchdog_cb));
   xTimerStart(captivePortalWatchdogTimer, 0);
+  if (this->cb)
+    (*this->cb)(apIP.toString().c_str());
 
   while(!this->Done){
     dnsServer.processNextRequest();
@@ -374,7 +384,10 @@ void MOWM::buildPage(Page_t page) {
       "<body>"
       "<h1>Success</h1>"
       "<h2>Device is now connected to " + this->selectedSSID + " ("+WiFi.localIP().toString()+")</h2>"
+<<<<<<< HEAD
       "<h2>MQTT server set to " + this->mqtt_ip + "</h2>"
+=======
+>>>>>>> main
       "</body>"
       "</html>";
       break;
