@@ -8,6 +8,7 @@ class MOWM /*: public WebServer*/
 {
   public:
     MOWM();
+    MOWM(void (*cb)(const char* param));
     void begin(bool doReboot, unsigned long msec_try = 10000);
     void captivePortalWatchdog_cb(TimerHandle_t xTimer);
 
@@ -36,5 +37,6 @@ class MOWM /*: public WebServer*/
     Result_t Result;
     String selectedSSID;
     const  String  _emptyString = String("");
+    void (*cb)(const char* param);
 };
 #endif
