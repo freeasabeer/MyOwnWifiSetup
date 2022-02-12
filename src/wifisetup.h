@@ -8,6 +8,7 @@ class MOWM /*: public WebServer*/
 {
   public:
     MOWM();
+    MOWM(void (*cb)(const char* param));
     void begin(bool doReboot, unsigned long msec_try = 10000, bool force_activation = false);
     void captivePortalWatchdog_cb(TimerHandle_t xTimer);
 
