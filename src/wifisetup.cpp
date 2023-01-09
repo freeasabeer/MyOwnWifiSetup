@@ -384,10 +384,7 @@ void MOWM::buildPage(Page_t page) {
       "<body>"
       "<h1>Success</h1>"
       "<h2>Device is now connected to " + this->selectedSSID + " ("+WiFi.localIP().toString()+")</h2>"
-<<<<<<< HEAD
       "<h2>MQTT server set to " + this->mqtt_ip + "</h2>"
-=======
->>>>>>> main
       "</body>"
       "</html>";
       break;
