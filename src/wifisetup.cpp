@@ -189,16 +189,46 @@ void MOWM::handleFail() {
  * Function for handling form
  */
 void MOWM::handleSubmit() {
-  int i = 20;
-  if (this->mqtt_ip != this->server->arg(F("MQTT"))) {
-    this->mqtt_ip = this->server->arg(F("MQTT"));
-    Preferences pref;
+  Preferences pref;
+  if (this->mqtt_ip != this->server->arg(F(AUTOCONNECT_PARAMID_MQTT))) {
+    this->mqtt_ip = this->server->arg(F(AUTOCONNECT_PARAMID_MQTT));
     pref.begin("mows", false);
     pref.putString("mqtt", this->mqtt_ip);
     pref.end();
   }
-  Serial.println(String(F("Trying to connect to "))+this->server->arg(F("SSID")));
-  WiFi.begin(this->server->arg(F("SSID")).c_str(), (const char *)this->server->arg(F("Passphrase")).c_str());
+  pref.begin("settings", false);
+  if (this->City != this->server->arg(F(AUTOCONNECT_PARAMID_CITY))) {
+    this->City = this->server->arg(F(AUTOCONNECT_PARAMID_CITY));
+    pref.putString("City", this->City);
+  }
+  if (this->Latitude != this->server->arg(F(AUTOCONNECT_PARAMID_LAT))) {
+    this->Latitude = this->server->arg(F(AUTOCONNECT_PARAMID_LAT));
+    pref.putString("Latitude", this->Latitude);
+  }
+  if (this->Longitude != this->server->arg(F(AUTOCONNECT_PARAMID_LON))) {
+    this->Longitude = this->server->arg(F(AUTOCONNECT_PARAMID_LON));
+    pref.putString("Longitude", this->Longitude);
+  }
+  long ltmp = strtol(this->server->arg(F(AUTOCONNECT_PARAMID_SLEEPDURATION)).c_str(), NULL, 10);
+  if (this->SleepDuration != ltmp) {
+    this->SleepDuration = ltmp;
+    pref.putLong("SleepDuration", this->SleepDuration);
+  }
+  int itmp = atoi(this->server->arg(F(AUTOCONNECT_PARAMID_SLEEPDURATION)).c_str());
+  if (this->WakeupHour != itmp) {
+    this->WakeupHour = itmp;
+    pref.putInt("WakeupHour", this->WakeupHour);
+  }
+  itmp = atoi(this->server->arg(F(AUTOCONNECT_PARAMID_SLEEPHOUR)).c_str());
+  if (this->SleepHour != itmp) {
+    this->SleepHour = itmp;
+    pref.putInt("SleepHour", this->SleepHour);
+  }
+  pref.end();
+
+  Serial.println(String(F("Trying to connect to "))+this->server->arg(F(AUTOCONNECT_PARAMID_SSID)));
+  WiFi.begin(this->server->arg(F(AUTOCONNECT_PARAMID_SSID)).c_str(), (const char *)this->server->arg(F(AUTOCONNECT_PARAMID_PASS)).c_str());
+  int i = 20;
   while ((WiFi.status() != WL_CONNECTED) && (i > 0)){
     delay(500);
     i--;
@@ -445,12 +475,51 @@ void MOWM::buildPage(Page_t page) {
       /* champ pour MQTT */
       Preferences pref;
       pref.begin("mows", true);
-      String mqtt_ip = pref.getString("mqtt", "192.168.100.24");
+      mqtt_ip = pref.getString("mqtt", "192.168.100.24");
       pref.end();
       *this->pagetoserve +=   "<li>";
       *this->pagetoserve +=     "<label for=\"mqtt\">" AUTOCONNECT_PAGECONFIG_MQTT "</label>";
-      String default_mqtt_ip = "192.168.100.24";
+      //String default_mqtt_ip = "192.168.100.24";
       *this->pagetoserve +=     "<input id=\"mqtt\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT "\" value=\"" + mqtt_ip + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      pref.begin("settings", true);
+      City        = pref.getString("City", "Franconville");
+      Latitude    = pref.getString("Latitude", "48.986824");
+      Longitude   = pref.getString("Longitude", "2.228968");
+      SleepDuration = pref.getLong("SleepDuration", 60); // Sleep time in minutes, aligned to the nearest minute boundary, so if 30 will always update at 00 or 30 past the hour
+      WakeupHour     = pref.getInt("WakeupHour", 7);        // Wakeup after 07:00 to save battery power
+      SleepHour      = pref.getInt("SleepHour", 23);          // Sleep  after 23:00 to save battery power
+      pref.end();
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"city\">" AUTOCONNECT_PAGECONFIG_CITY "</label>";
+      *this->pagetoserve +=     "<input id=\"city\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_CITY "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_CITY "\" value=\"" + City + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"lat\">" AUTOCONNECT_PAGECONFIG_LAT "</label>";
+      *this->pagetoserve +=     "<input id=\"lat\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_LAT "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_LAT "\" value=\"" + Latitude + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"lon\">" AUTOCONNECT_PAGECONFIG_LON "</label>";
+      *this->pagetoserve +=     "<input id=\"lon\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_LON "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_LON "\" value=\"" + Longitude + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"sleepduration\">" AUTOCONNECT_PAGECONFIG_SLEEPDURATION "</label>";
+      *this->pagetoserve +=     "<input id=\"sleepduration\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_SLEEPDURATION "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_SLEEPDURATION "\" value=\"" + String(SleepDuration) + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"wakeuphour\">" AUTOCONNECT_PAGECONFIG_WAKEUPHOUR "</label>";
+      *this->pagetoserve +=     "<input id=\"wakeuphour\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_WAKEUPHOUR "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_WAKEUPHOUR "\" value=\"" + String(WakeupHour) + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"sleephour\">" AUTOCONNECT_PAGECONFIG_SLEEPHOUR "</label>";
+      *this->pagetoserve +=     "<input id=\"sleephour\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_SLEEPHOUR "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_SLEEPHOUR "\" value=\"" + String(SleepHour) + "\">";
       *this->pagetoserve +=   "</li>";
 
        *this->pagetoserve +=   "<li><input type=\"submit\" name=\"apply\" value=\"" AUTOCONNECT_PAGECONFIG_APPLY "\"></li>";
@@ -548,6 +617,30 @@ void MOWM::buildPage(Page_t page) {
           "<tr>"
             "<td> MQTT server </td>"
             "<td>" + this->mqtt_ip + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> City </td>"
+            "<td>" + this->City + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> Latitude </td>"
+            "<td>" + this->Latitude + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> Longitude </td>"
+            "<td>" + this->Longitude + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td>  SleepDuration </td>"
+            "<td>" + String(this->SleepDuration) + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> WakeupHour </td>"
+            "<td>" + String(this->WakeupHour) + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> SleepHour </td>"
+            "<td>" + String(this->SleepHour) + "</td>"
           "</tr>"
           "</tbody>"
         "</table>"
