@@ -190,12 +190,20 @@ void MOWM::handleFail() {
  */
 void MOWM::handleSubmit() {
   Preferences pref;
-  if (this->mqtt_ip != this->server->arg(F(AUTOCONNECT_PARAMID_MQTT))) {
-    this->mqtt_ip = this->server->arg(F(AUTOCONNECT_PARAMID_MQTT));
-    pref.begin("mows", false);
+  pref.begin("mows", false);
+  if (this->mqtt_ip != this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_IP))) {
+    this->mqtt_ip = this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_IP));
     pref.putString("mqtt", this->mqtt_ip);
-    pref.end();
   }
+  if (this->mqtt_user != this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_USER))) {
+    this->mqtt_user = this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_USER));
+    pref.putString("mqtt_user", this->mqtt_user);
+  }
+  if (this->mqtt_pwd != this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_PWD))) {
+    this->mqtt_pwd = this->server->arg(F(AUTOCONNECT_PARAMID_MQTT_PWD));
+    pref.putString("mqtt_pwd", this->mqtt_pwd);
+  }
+  pref.end();
   pref.begin("settings", false);
   if (this->City != this->server->arg(F(AUTOCONNECT_PARAMID_CITY))) {
     this->City = this->server->arg(F(AUTOCONNECT_PARAMID_CITY));
@@ -476,11 +484,22 @@ void MOWM::buildPage(Page_t page) {
       Preferences pref;
       pref.begin("mows", true);
       mqtt_ip = pref.getString("mqtt", "192.168.100.24");
+      mqtt_user = pref.getString("mqtt_user", "");
+      mqtt_pwd = pref.getString("mqtt_pwd", "");
       pref.end();
       *this->pagetoserve +=   "<li>";
-      *this->pagetoserve +=     "<label for=\"mqtt\">" AUTOCONNECT_PAGECONFIG_MQTT "</label>";
-      //String default_mqtt_ip = "192.168.100.24";
-      *this->pagetoserve +=     "<input id=\"mqtt\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT "\" value=\"" + mqtt_ip + "\">";
+      *this->pagetoserve +=     "<label for=\"mqtt_ip\">" AUTOCONNECT_PAGECONFIG_MQTT_IP "</label>";
+      *this->pagetoserve +=     "<input id=\"mqtt_ip\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT_IP "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT_IP "\" value=\"" + mqtt_ip + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"mqtt_user\">" AUTOCONNECT_PAGECONFIG_MQTT_USER "</label>";
+      *this->pagetoserve +=     "<input id=\"mqtt_user\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT_USER "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT_USER "\" value=\"" + mqtt_user + "\">";
+      *this->pagetoserve +=   "</li>";
+
+      *this->pagetoserve +=   "<li>";
+      *this->pagetoserve +=     "<label for=\"mqtt_pwd\">" AUTOCONNECT_PAGECONFIG_MQTT_PWD "</label>";
+      *this->pagetoserve +=     "<input id=\"mqtt_pwd\" type=\"text\" name=\"" AUTOCONNECT_PARAMID_MQTT_PWD "\" placeholder=\"" AUTOCONNECT_PAGECONFIG_MQTT_PWD "\" value=\"" + mqtt_pwd + "\">";
       *this->pagetoserve +=   "</li>";
 
       pref.begin("settings", true);
@@ -615,8 +634,16 @@ void MOWM::buildPage(Page_t page) {
             "<td>" + WiFi.RSSI() + "</td>"
           "</tr>"
           "<tr>"
-            "<td> MQTT server </td>"
+            "<td> MQTT Server IP</td>"
             "<td>" + this->mqtt_ip + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> MQTT Server User</td>"
+            "<td>" + this->mqtt_user + "</td>"
+          "</tr>"
+          "<tr>"
+            "<td> MQTT Server Password</td>"
+            "<td>" + this->mqtt_pwd + "</td>"
           "</tr>"
           "<tr>"
             "<td> City </td>"

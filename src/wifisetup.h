@@ -38,6 +38,8 @@ class MOWM /*: public WebServer*/
     String selectedSSID;
     const  String  _emptyString = String("");
     String mqtt_ip;
+    String mqtt_user;
+    String mqtt_pwd;
     String City;
     String Latitude;
     String Longitude;
